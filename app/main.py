@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import users
+from app.api import generation, users
 from app.config import get_settings
 from app.db import init_db
 
@@ -22,6 +22,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(users.router)
+    app.include_router(generation.router)
     return app
 
 

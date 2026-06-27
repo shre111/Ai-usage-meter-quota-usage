@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field, model_validator
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class UserConfigRequest(BaseModel):
@@ -46,3 +48,17 @@ class GenerateResponse(BaseModel):
     text: str
     usage: GenerationUsage
     remaining_credits: int
+
+
+class UsageRecordOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+    status: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    estimated_credits: int
+    actual_credits: int
+    multiplier_at_time: float

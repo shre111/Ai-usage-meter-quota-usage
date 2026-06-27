@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import generation, users
+from app.api import generation, usage, users
 from app.config import get_settings
 from app.db import init_db
 
@@ -23,6 +23,7 @@ def create_app() -> FastAPI:
 
     app.include_router(users.router)
     app.include_router(generation.router)
+    app.include_router(usage.router)
     return app
 
 

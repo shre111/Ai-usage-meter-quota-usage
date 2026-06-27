@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     input_weight: float = 1.0
     output_weight: float = 3.0
-    credits_per_1k_tokens: float = 1.0
+    credits_per_1k_weighted_tokens: float = 10.0
 
     estimated_completion_tokens: int = 300
 

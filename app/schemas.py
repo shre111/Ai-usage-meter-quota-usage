@@ -25,3 +25,24 @@ class UsageSummary(BaseModel):
     used_credits: int
     reserved_credits: int
     remaining_credits: int
+
+
+class GenerateRequest(BaseModel):
+    prompt: str = Field(min_length=1)
+    max_tokens: int | None = Field(default=None, gt=0)
+
+
+class GenerationUsage(BaseModel):
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    estimated_credits: int
+    actual_credits: int
+
+
+class GenerateResponse(BaseModel):
+    user_id: str
+    record_id: int
+    text: str
+    usage: GenerationUsage
+    remaining_credits: int

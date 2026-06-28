@@ -23,19 +23,105 @@ pip install -r requirements.txt
 ## Run
 
 ```bash
-uvicorn app.main:app --reload
+# from the repo root, with the virtualenv activated
+uvicorn app.main:app --reload --port 8000
 ```
 
-Interactive API docs at `http://127.0.0.1:8000/docs`. Health check at `GET /health`.
+- Service: `http://127.0.0.1:8000`
+- Interactive API docs (Swagger UI): `http://127.0.0.1:8000/docs`
+- Health check: `curl localhost:8000/health` → `{"status":"ok"}`
 
 The default AI provider is a deterministic **mock** that returns realistic token usage,
 so no API key is needed. It is selected behind an `AIProvider` interface; a real provider
 can be added without touching the metering logic.
 
+State is stored in a local SQLite file `quota.db` (created on first run). To start from a
+clean slate, stop the server and delete it:
+
+```bash
+rm -f quota.db
+```
+
 ## Test
+
+### Automated tests
 
 ```bash
 pytest
+```
+
+37 tests cover the behaviors the assignment asks for:
+
+- successful generation and usage recording;
+- credit calculation and per-user multiplier scaling;
+- different users getting different quota/multiplier behavior;
+- quota enforcement (enough vs. not enough remaining);
+- AI-layer failure, both before usage and after partial usage;
+- retrieval of current usage / remaining allowance and history;
+- estimate-vs-actual usage (under-use frees credits; over-use is honored as overage);
+- near-simultaneous requests from one user (5 threads, no overspend) — `tests/test_concurrency.py`.
+
+### End-to-end testing (manual)
+
+With the server running, run the scripted walkthrough that exercises every scenario:
+
+```bash
+./scripts/demo.sh                 # defaults to localhost:8000
+BASE=localhost:8000 ./scripts/demo.sh
+```
+
+Run it against a fresh `quota.db` to see the quota-exhaustion transition cleanly.
+
+Or step through the scenarios by hand:
+
+```bash
+# 1. Configure two users with different quota + multiplier
+curl -X PUT localhost:8000/users/alice/config \
+  -H 'content-type: application/json' -d '{"monthly_allowance":100,"multiplier":1.5}'
+curl -X PUT localhost:8000/users/bob/config \
+  -H 'content-type: application/json' -d '{"monthly_allowance":1000,"multiplier":1.0}'
+
+# 2. Successful generation (estimate assumes 300 completion tokens; actual is lower)
+curl -X POST localhost:8000/users/alice/generate \
+  -H 'content-type: application/json' -d '{"prompt":"Summarize the meeting notes"}'
+#    -> estimated_credits 14, actual_credits 6, remaining_credits 94
+
+# 3. Per-user multiplier: same prompt costs more for the higher multiplier
+curl -X POST localhost:8000/users/alice/generate \
+  -H 'content-type: application/json' -d '{"prompt":"same prompt here"}'   # 1.5x -> 6
+curl -X POST localhost:8000/users/bob/generate \
+  -H 'content-type: application/json' -d '{"prompt":"same prompt here"}'   # 1.0x -> 4
+
+# 4. Inspect current usage / remaining
+curl localhost:8000/users/alice/usage
+
+# 5. Quota exceeded -> HTTP 402 with remaining/required
+curl -X PUT localhost:8000/users/carol/config \
+  -H 'content-type: application/json' -d '{"monthly_allowance":5,"multiplier":1.0}'
+curl -i -X POST localhost:8000/users/carol/generate \
+  -H 'content-type: application/json' -d '{"prompt":"hello there"}'
+
+# 6. AI failure BEFORE usage -> HTTP 502, reservation released (usage unchanged)
+curl -i -X POST localhost:8000/users/alice/generate \
+  -H 'content-type: application/json' -d '{"prompt":"trigger [FAIL] now"}'
+
+# 7. AI failure AFTER partial usage -> HTTP 502, partial usage committed
+curl -i -X POST localhost:8000/users/bob/generate \
+  -H 'content-type: application/json' -d '{"prompt":"[FAIL_PARTIAL] mid-stream"}'
+
+# 8. Unconfigured user -> HTTP 404
+curl -i -X POST localhost:8000/users/ghost/generate \
+  -H 'content-type: application/json' -d '{"prompt":"hi"}'
+
+# 9. Usage history (status + multiplier_at_time per record)
+curl localhost:8000/users/alice/usage/records
+
+# 10. Multiplier change applies to FUTURE requests only
+curl -X PUT localhost:8000/users/bob/config \
+  -H 'content-type: application/json' -d '{"multiplier":3.0}'
+curl -X POST localhost:8000/users/bob/generate \
+  -H 'content-type: application/json' -d '{"prompt":"after the change"}'
+curl localhost:8000/users/bob/usage/records   # old records keep their 1.0 multiplier
 ```
 
 ## API
@@ -49,31 +135,6 @@ pytest
 
 Status codes: `200` success, `402` quota exceeded (body includes remaining/required),
 `404` user not configured, `502` AI generation failed.
-
-## Example session
-
-```bash
-# Configure a user: 100 credits, 1.5x multiplier
-curl -X PUT localhost:8000/users/alice/config \
-  -H 'content-type: application/json' \
-  -d '{"monthly_allowance": 100, "multiplier": 1.5}'
-
-# Generate
-curl -X POST localhost:8000/users/alice/generate \
-  -H 'content-type: application/json' \
-  -d '{"prompt": "Summarize the meeting notes"}'
-
-# Inspect usage and history
-curl localhost:8000/users/alice/usage
-curl localhost:8000/users/alice/usage/records
-```
-
-To demonstrate failure handling, include `[FAIL]` (fails before usage) or `[FAIL_PARTIAL]`
-(fails after partial usage) in the prompt.
-```bash
-curl -X POST localhost:8000/users/alice/generate \
-  -H 'content-type: application/json' -d '{"prompt": "boom [FAIL]"}'
-```
 
 ## Configuration
 

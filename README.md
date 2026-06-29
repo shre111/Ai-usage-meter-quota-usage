@@ -28,8 +28,14 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 - Service: `http://127.0.0.1:8000`
+- **Web UI (visual demo):** `http://127.0.0.1:8000/ui/`
 - Interactive API docs (Swagger UI): `http://127.0.0.1:8000/docs`
 - Health check: `curl localhost:8000/health` → `{"status":"ok"}`
+
+The web UI lets you configure a user, generate text, and watch usage, remaining credits,
+and history update live — including quota-exceeded (402) and AI-failure (502) behavior via
+the "Simulate AI failure" / "Partial failure" buttons. No build step; it is a single
+static page served by the app.
 
 The default AI provider is a deterministic **mock** that returns realistic token usage,
 so no API key is needed. It is selected behind an `AIProvider` interface; a real provider
